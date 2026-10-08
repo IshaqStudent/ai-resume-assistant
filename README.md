@@ -32,6 +32,7 @@ If no key is configured, the app shows a password field in the sidebar.
 |------|----------|---------|---------|
 | `GEMINI_API_KEY` | Yes | - | Your Gemini API key |
 | `GEMINI_MODEL` | No | `gemini-3.8-flash` | Gemini model name to use |
+| `GEMINI_FALLBACK_MODELS` | No | - | Comma-separated backup models used if the main one stays overloaded |
 
 Set them as environment variables locally, or in `.streamlit/secrets.toml`:
 
@@ -70,6 +71,7 @@ GEMINI_API_KEY = "your-key"
 
 ## Notes
 
+- Temporary Google errors (503 high demand, 429 rate limit) are retried automatically with waits of 2, 5, 10 and 20 seconds.
 - Scanned/image-only PDFs have no extractable text; upload a text-based PDF or DOCX.
 - Max upload size is 5 MB; only the first ~15,000 characters are analysed.
 - Resumes are sent to the Gemini API for analysis and are not stored by this app.
