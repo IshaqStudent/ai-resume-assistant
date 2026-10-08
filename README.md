@@ -1,4 +1,3 @@
-# ai-resume-assistant
 # 📄 Resume ATS Score Checker
 
 Upload a resume (PDF, DOCX or TXT), optionally paste a job description, and get:
@@ -32,7 +31,7 @@ If no key is configured, the app shows a password field in the sidebar.
 | Name | Required | Default | Purpose |
 |------|----------|---------|---------|
 | `GEMINI_API_KEY` | Yes | - | Your Gemini API key |
-| `GEMINI_MODEL` | No | `gemini-2.5-flash` | Gemini model name to use |
+| `GEMINI_MODEL` | No | `gemini-3.8-flash` | Gemini model name to use |
 
 Set them as environment variables locally, or in `.streamlit/secrets.toml`:
 
