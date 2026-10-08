@@ -18,7 +18,7 @@ from pypdf import PdfReader
 # --------------------------------------------------------------------------- #
 # Configuration
 # --------------------------------------------------------------------------- #
-DEFAULT_MODEL = "gemini-2.5-flash"  # override with GEMINI_MODEL in secrets/env
+DEFAULT_MODEL = "gemini-3.8-flash"  # override with GEMINI_MODEL in secrets/env
 MAX_FILE_MB = 5
 MAX_CHARS = 15000  # resume text sent to the model
 MIN_CHARS = 200  # below this the file is probably scanned / empty
