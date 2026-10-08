@@ -10,6 +10,7 @@ import io
 import json
 import os
 import re
+import time
 
 import streamlit as st
 from docx import Document
@@ -189,8 +190,34 @@ def get_secret(name: str, default: str = "") -> str:
     return os.environ.get(name, default)
 
 
-def analyze_resume(api_key: str, model: str, resume_text: str, job_description: str = "", client=None) -> dict:
-    """Call Gemini and return the parsed analysis. Retries once on bad JSON."""
+TRANSIENT_MARKERS = ("503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED", "500", "INTERNAL", "504", "DEADLINE")
+RETRY_DELAYS = (2, 5, 10, 20)  # seconds to wait before retries on the same model
+
+
+def is_transient(exc: Exception) -> bool:
+    """True for temporary Gemini errors (overload, rate limit, server hiccup)."""
+    code = getattr(exc, "code", None)
+    if code in (429, 500, 503, 504):
+        return True
+    text = str(exc).upper()
+    return any(marker in text for marker in TRANSIENT_MARKERS)
+
+
+def analyze_resume(
+    api_key: str,
+    model: str,
+    resume_text: str,
+    job_description: str = "",
+    client=None,
+    fallback_models=(),
+    sleep=time.sleep,
+) -> dict:
+    """Call Gemini and return the parsed analysis.
+
+    - Retries with waiting on temporary errors (e.g. 503 high demand / 429 rate limit)
+    - Moves to fallback models if the main one stays unavailable
+    - Retries once on unreadable JSON
+    """
     if client is None:
         from google import genai
 
@@ -202,14 +229,35 @@ def analyze_resume(api_key: str, model: str, resume_text: str, job_description: 
         temperature=0.2,
     )
     prompt = build_prompt(resume_text, job_description)
+    models = [model] + [m for m in fallback_models if m and m != model]
     last_error = None
-    for _ in range(2):
-        response = client.models.generate_content(model=model, contents=prompt, config=config)
-        try:
-            return parse_response(getattr(response, "text", "") or "")
-        except ValueError as exc:
-            last_error = exc
-    raise ValueError(f"Could not read the AI response after retrying: {last_error}")
+    bad_json_retries = 1
+
+    for current in models:
+        attempt = 0
+        while True:
+            try:
+                response = client.models.generate_content(model=current, contents=prompt, config=config)
+                return parse_response(getattr(response, "text", "") or "")
+            except ValueError as exc:  # unreadable output from the model
+                last_error = exc
+                if bad_json_retries <= 0:
+                    raise ValueError(f"Could not read the AI response after retrying: {exc}")
+                bad_json_retries -= 1
+            except Exception as exc:
+                if not is_transient(exc):
+                    raise  # e.g. invalid key, 404 model - retrying will not help
+                last_error = exc
+                if attempt >= len(RETRY_DELAYS):
+                    break  # give up on this model, try the next one
+                sleep(RETRY_DELAYS[attempt])
+                attempt += 1
+
+    raise RuntimeError(
+        "Google's Gemini service is busy right now (high demand). "
+        "Please wait a minute and click Analyze again. "
+        f"Details: {last_error}"
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -269,6 +317,7 @@ def main() -> None:
 
     api_key = get_secret("GEMINI_API_KEY")
     model = get_secret("GEMINI_MODEL", DEFAULT_MODEL)
+    fallbacks = [m.strip() for m in get_secret("GEMINI_FALLBACK_MODELS").split(",") if m.strip()]
     if not api_key:
         with st.sidebar:
             st.header("Settings")
@@ -296,7 +345,9 @@ def main() -> None:
                     )
                 else:
                     with st.spinner("Analyzing your resume..."):
-                        st.session_state["result"] = analyze_resume(api_key, model, text, job_description)
+                        st.session_state["result"] = analyze_resume(
+                            api_key, model, text, job_description, fallback_models=fallbacks
+                        )
             except ValueError as exc:
                 st.session_state.pop("result", None)
                 st.error(str(exc))
